@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ Thống Điều Phối 115 - HCM/BD/BRVT</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <!-- Thư viện giải mã Open Location Code (Plus Code) -->
+    <script src="https://cdn.jsdelivr.net/npm/open-location-code@1.0.2/openlocationcode.min.js"></script>
+    <style>
+        body { margin: 0; font-family: 'Segoe UI', Arial, sans-serif; height: 100vh; display: flex; flex-direction: column; background: #f4f4f4; }
+        #project-header { background: #c0392b; color: #fff; padding: 14px; text-align: center; font-weight: bold; font-size: 1.2em; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+        #main { flex: 1; display: flex; overflow: hidden; position: relative; } 
+        #map { flex: 3; z-index: 1; }
+        #side { flex: 1; min-width: 380px; border-left: 1px solid #ccc; display: flex; flex-direction: column; background: white; }
+        
+        #map-search-container { position: absolute; top: 20px; left: 60px; z-index: 1000; width: 280px; }
+        #mapSearchInput { width: 100%; padding: 12px 35px 12px 15px; border-radius: 8px; border: 2px solid #c0392b; box-shadow: 0 4px 15px rgba(0,0,0,0.2); font-weight: bold; outline: none; box-sizing: border-box; background: white; }
+        #mapSearchList { background: white; border-radius: 0 0 8px 8px; max-height: 250px; overflow-y: auto; display: none; box-shadow: 0 4px 10px rgba(0,0,0,0.1); border: 1px solid #ccc; margin-top: 2px; }
+        .map-search-item { padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; font-size: 13px; }
+        .map-search-item:hover { background: #fdf2f2; color: #c0392b; }
+
+        .search { padding: 15px; background: #f9f9f9; border-bottom: 1px solid #ddd; }
+        .address-container { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+        .address-row { display: flex; gap: 5px; }
+        
+        .input-wrapper { position: relative; flex: 1; display: flex; align-items: center; }
+        .input-wrapper input { padding: 10px 28px 10px 10px; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box; font-size: 13px; outline: none; width: 100%; background: white; }
+        .btn-clear {
+            position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+            width: 18px; height: 18px; background: #ccc; color: white; border-radius: 50%;
+            display: none; align-items: center; justify-content: center; font-size: 11px;
+            font-weight: bold; cursor: pointer; user-select: none; line-height: 1;
+        }
+        .btn-clear:hover { background: #e74c3c; }
+
+        .coord-divider { display: flex; align-items: center; text-align: center; margin: 4px 0; color: #7f8c8d; font-size: 11px; font-weight: bold; }
+        .coord-divider::before, .coord-divider::after { content: ''; flex: 1; border-bottom: 1px dashed #ccc; }
+        .coord-divider:not(:empty)::before { margin-right: .5em; }
+        .coord-divider:not(:empty)::after { margin-left: .5em; }
+
+        .search button { width: 48%; padding: 10px; border: none; border-radius: 6px; color: white; font-weight: bold; cursor: pointer; }
+        #btnSearch { background: #2980b9; }
+        #btnReset { background: #7f8c8d; }
+
+        .station-search-container { padding: 10px 15px; position: relative; background: #fff; border-bottom: solid 1px #eee; z-index: 2000; }
+        #stSearchInput { width: 100%; padding: 10px 30px 10px 10px; border: 2px solid #ddd; border-radius: 6px; outline: none; box-sizing: border-box; }
+        #stRollList { 
+            position: absolute; top: 100%; left: 15px; right: 15px; 
+            background: white; border: 1px solid #ccc; border-top: none;
+            max-height: 250px; overflow-y: auto; display: none;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1); border-radius: 0 0 8px 8px;
+        }
+        .roll-item { padding: 10px; border-bottom: 1px solid #eee; cursor: pointer; }
+        .roll-item:hover { background: #fdf2f2; }
+
+        .plan-tabs { display: flex; background: #eaeded; border-bottom: 1px solid #ccc; }
+        .plan-tab { flex: 1; padding: 12px 5px; text-align: center; font-weight: bold; font-size: 13px; color: #c0392b; background: #fff; border-bottom: 3px solid #c0392b; }
+
+        #list { flex: 1; overflow-y: auto; padding: 15px; background: #fff; }
+        .station-card { padding: 10px; border-left: 4px solid #2980b9; margin-bottom: 8px; background: #fafafa; border-radius: 6px; cursor: pointer; font-size: 12px; }
+        .station-card:hover { border-left-color: #c0392b; background: #f0f0f0; }
+        .station-card b { font-size: 13px; color: #333; }
+
+        .modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; z-index: 4000; align-items: center; justify-content: center; }
+        .modal-box { background: white; width: 90%; max-width: 420px; padding: 25px; border-radius: 12px; }
+        .modal-box textarea { width: 100%; padding: 10px; margin-top: 10px; border: 1px solid #ddd; border-radius: 4px; resize: none; box-sizing: border-box; }
+        .modal-btns { display: flex; gap: 10px; margin-top: 20px; }
+        .modal-btns button { flex: 1; padding: 12px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; color: white; }
+
+        .signature {
+            position: absolute; bottom: 10px; right: 10px; z-index: 9999;
+            font-family: 'Courier New', Courier, monospace; font-size: 11px;
+            font-weight: bold; color: rgba(0, 0, 0, 0.4); background: rgba(255, 255, 255, 0.5);
+            padding: 2px 8px; border-radius: 4px; pointer-events: none; border: 1px solid rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body>
+
+<div id="project-header">🚑 HỆ THỐNG ĐIỀU PHỐI CẤP CỨU 115</div>
+
+<div id="main">
+    <div id="map-search-container">
+        <div class="input-wrapper">
+            <input type="text" id="mapSearchInput" placeholder="🔍 Tìm địa chỉ/trạm..." oninput="filterMapSearch(this.value); toggleClearBtn(this)">
+            <span class="btn-clear" onclick="clearInput('mapSearchInput')">✖</span>
+        </div>
+        <div id="mapSearchList"></div>
+    </div>
+    <div id="map">
+        <div class="signature">PROPERTY OF PVTUYEN</div>
+    </div>
+    <div id="side">
+        <div class="search">
+            <div class="address-container">
+                <!-- Ô TÌM KIẾM THEO ĐỊA ĐIỂM / TÊN ĐỊA ĐIỂM -->
+                <div class="coord-divider">TÌM KIẾM ĐỊA ĐIỂM / TÊN ĐỊA ĐIỂM</div>
+                <div class="address-row">
+                    <div class="input-wrapper">
+                        <input id="addr_location_name" placeholder="VD: Chợ Bến Thành, Sân bay Tân Sơn Nhất..." oninput="toggleClearBtn(this)">
+                        <span class="btn-clear" onclick="clearInput('addr_location_name')">✖</span>
+                    </div>
+                </div>
+
+                <div class="coord-divider">HOẶC NHẬP ĐỊA CHỈ CHI TIẾT</div>
+                <div class="address-row">
+                    <div class="input-wrapper">
+                        <input id="addr_full" placeholder="VD: 191 Hòa Bình, Phường Phú Thạnh, TP.HCM" oninput="toggleClearBtn(this)">
+                        <span class="btn-clear" onclick="clearInput('addr_full')">✖</span>
+                    </div>
+                </div>
+
+                <div class="coord-divider">DÁN PLUS CODE (GOOGLE MAPS)</div>
+                <div class="address-row">
+                    <div class="input-wrapper">
+                        <input id="addr_pluscode" placeholder="VD: 7P28Q2XP+MW" oninput="toggleClearBtn(this)">
+                        <span class="btn-clear" onclick="clearInput('addr_pluscode')">✖</span>
+                    </div>
+                </div>
+
+                <div class="coord-divider">HOẶC NHẬP TỌA ĐỘ</div>
+                <div class="address-row">
+                    <div class="input-wrapper">
+                        <input id="addr_lat" placeholder="Vĩ độ (Lat) VD: 10.7769" oninput="toggleClearBtn(this)">
+                        <span class="btn-clear" onclick="clearInput('addr_lat')">✖</span>
+                    </div>
+                    <div class="input-wrapper">
+                        <input id="addr_lng" placeholder="Kinh độ (Lng) VD: 106.7009" oninput="toggleClearBtn(this)">
+                        <span class="btn-clear" onclick="clearInput('addr_lng')">✖</span>
+                    </div>
+                </div>
+            </div>
+            <div style="display:flex; justify-content:space-between">
+                <button id="btnSearch" onclick="searchAddr()">ĐỊNH VỊ CA MỚI</button>
+                <button id="btnReset" onclick="resetCurrentInput()">HỦY NHẬP</button>
+            </div>
+        </div>
+
+        <div class="station-search-container">
+            <div class="input-wrapper">
+                <input type="text" id="stSearchInput" placeholder="🔍 Chọn nhanh trạm cấp cứu..." oninput="handleRollSearch(this.value); toggleClearBtn(this)">
+                <span class="btn-clear" onclick="clearInput('stSearchInput')">✖</span>
+            </div>
+            <div id="stRollList"></div>
+        </div>
+
+        <div class="plan-tabs">
+            <div class="plan-tab">PHƯƠNG ÁN 2 (TRẠM GẦN NHẤT)</div>
+        </div>
+
+        <div id="list"><i>Vui lòng click bản đồ hoặc nhập địa chỉ/Plus Code/tọa độ để xử lý ca bệnh...</i></div>
+    </div>
+</div>
+
+<div id="modal" class="modal">
+    <div class="modal-box">
+        <h3 id="m_title">📄 Phiếu Điều Trạm</h3>
+        <p id="m_case_info" style="font-size: 13px; font-weight: bold; color: #2980b9; margin-bottom: 10px;"></p>
+        <label style="font-size: 13px; font-weight: bold;">Trạm chỉ định:</label>
+        <input id="f_station" style="width:100%; padding:10px; margin-top:5px; border:1px solid #ddd; border-radius:4px; background:#f9f9f9" readonly>
+        <p id="m_road_info" style="font-size: 12px; color: #e67e22; margin: 5px 0; font-weight: bold;"></p>
+        <textarea id="f_reason" rows="3" placeholder="Lý do từ chối (nếu có)..."></textarea>
+        <div class="modal-btns">
+            <button id="btnAccept" onclick="submitAction('Xác nhận')" style="background:#27ae60;">XÁC NHẬN CHẠY CA</button>
+            <button id="btnReject" onclick="submitAction('Từ chối')" style="background:#e67e22;">TRẠM TỪ CHỐI</button>
+            <button onclick="closeModal()" style="background:#7f8c8d;">ĐÓNG</button>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const LIMIT = { latMin: 10.30, latMax: 11.55, lngMin: 106.30, lngMax: 107.55 };
+const BOX = `${LIMIT.lngMin},${LIMIT.latMax},${LIMIT.lngMax},${LIMIT.latMin}`;
+
+const priorityNames = [
+    "Trung tâm 115 (Q10)", 
+    "Trạm 115 Bình Đông (Q8)", 
+    "Trạm 115 Bình Trưng (Thủ Đức)", 
+    "Trạm 115 Thủ Đức", 
+    "Trạm 115 Ung Bướu CS2", 
+    "Trạm 115 Cần Giờ",
+    "Trạm 115 khu vực Bà Rịa",
+];
+
+const stations = [
+    { name:"BV Khánh Hội", lat:10.7654, lng:106.7020 }, { name:"BV Lãnh Binh Thăng", lat:10.7606, lng:106.6483 },
+    { name:"BV Trung Mỹ Tây", lat:10.8605, lng:106.6309 }, { name:"BV Sai Gon ITO", lat:10.7976, lng:106.6767 },
+    { name:"BV Tâm Anh", lat:10.8025, lng:106.6659 }, { name:"BV Hoàn Mỹ Sai Gon", lat:10.8001, lng:106.6842 },
+    { name:"BV 175", lat:10.8165, lng:106.6803 }, { name:"BV Hồng Đức III", lat:10.8330, lng:106.6642 },
+    { name:"BV Tâm Trí 115", lat:10.8317, lng:106.6218 }, { name:"BV Hồng Đức II", lat:10.8532, lng:106.7042 },
+    { name:"BV Đa Khoa Củ Chi", lat:11.0854, lng:106.5095 }, { name:"Trạm 115 Thủ Đức", lat:10.8610, lng:106.7808 },
+    { name:"BV Đa Hoàn Mỹ Bình Dương", lat:11.0040, lng:106.6418 }, { name:"BV Quân dân y miền đông", lat:10.8459, lng:106.7784 }, 
+    { name:"BV An Bình", lat:10.7546, lng:106.6715 }, { name:"BV Tân Định", lat:10.7901, lng:106.6896 },
+    { name:"BV Nam Sài Gòn", lat:10.7358, lng:106.6908 }, { name:"BV Tân Hưng", lat:10.7515, lng:106.6964 },
+    { name:"BV Triều An", lat:10.7396, lng:106.6168 }, { name:"BV PHCN-ĐTBNN", lat:10.7411, lng:106.6856 },
+    { name:"TTYT Dầu Tiếng", lat:11.2878, lng:106.3939 }, { name:"TTYT Bàu Bàng", lat:11.2576, lng:106.6106 },
+    { name:"TTYT Phú Giáo", lat:11.2894, lng:106.7975 }, { name:"TTYT Bến Cát", lat:11.1613, lng:106.5945 },
+    { name:"BV Đa khoa Mỹ Phước Bến Cát", lat:11.1405, lng:106.6069 }, { name:"TTYT Tân Uyên", lat:11.0853, lng:106.7802 },
+    { name:"TTYT Bắc Tân Uyên", lat:11.1496, lng:106.8455 }, { name:"BV Đa khoa Bình Dương", lat:10.9967, lng:106.6564 },
+    { name:"TTYT Thuận An", lat:10.9089, lng:106.7020 }, { name:"TTYT Dĩ An", lat:10.9104, lng:106.7815 },
+    { name:"BV Hoàn Hảo", lat:10.8701, lng:106.7628 }, { name:"BV Quốc tế Hạnh Phúc", lat:10.8683, lng:106.7145 },
+    { name:"BV Quân y 4", lat:10.8898, lng:106.7400 }, { name:"BV Vũng Tàu", lat:10.3926, lng:107.1313 }, 
+    { name:"BV Bà Rịa", lat:10.5096, lng:107.1957 }, { name:"TTYT Phú Mỹ", lat:10.5970, lng:107.0600 }, 
+    { name:"TTYT Châu Đức", lat:10.6478, lng:107.2405 }, { name:"TTYT Long Đất", lat:10.4649, lng:107.2157 }, 
+    { name:"TTYT Xuyên Mộc (Hồ Tràm)", lat:10.5392, lng:107.4129 }, { name:"TTYT Quân Dân Y Côn Đảo", lat:8.6930, lng:106.5998 },
+    { name:"BV Đa khoa Sài Gòn (Q1)", lat:10.7720, lng:106.6995 }, { name:"Trung tâm 115 (Q10)", lat:10.7703, lng:106.6585 }, 
+    { name:"BV đa khoa Gò Vấp", lat:10.8346, lng:106.6615 }, { name:"BV đa khoa Bình Thạnh", lat:10.7980, lng:106.6966 }, 
+    { name:"BV đa khoa Tân Phú", lat:10.7835, lng:106.6421 }, { name:"BV đa khoa Bình Tân", lat:10.7646, lng:106.6029 }, 
+    { name:"BV đa khoa Tân Bình", lat:10.7945, lng:106.6550 }, { name:"BV đa khoa Phú Nhuận", lat:10.7980, lng:106.6718 }, 
+    { name:"BV đa khoa Chánh Hưng (Q8)", lat:10.7417, lng:106.6764 }, { name:"BV Nguyễn Thị Thập (Q7)", lat:10.7377, lng:106.7241 }, 
+    { name:"BV Lê Văn Việt (Thủ Đức)", lat:10.8449, lng:106.7900 }, { name:"BV Lê Văn Thịnh (Thủ Đức)", lat:10.7826, lng:106.7690 }, 
+    { name:"BV đa khoa Thủ Đức", lat:10.8644, lng:106.7456 }, { name:"BV đa khoa khu vực Thủ Đức", lat:10.8614, lng:106.7804 }, 
+    { name:"BV Hoàn Mỹ Thủ Đức", lat:10.8874, lng:106.7745 }, { name:"BV Vạn Phúc City", lat:10.8424, lng:106.7116 }, 
+    { name:"BV đa khoa Bình Chánh", lat:10.6909, lng:106.5861 }, { name:"BV đa khoa khu vực Củ Chi", lat:10.9738, lng:106.4786 }, 
+    { name:"BV Xuyên Á (Củ Chi)", lat:10.9280, lng:106.5581 }, { name:"BV đa khoa khu vực Hóc Môn", lat:10.8825, lng:106.5933 }, 
+    { name:"BV Gia An 115 (Bình Tân)", lat:10.7406, lng:106.6071 }, { name:"BV Nhà Bè", lat:10.7049, lng:106.7042 }, 
+    { name:"Trạm 115 Cần Giờ", lat:10.4054, lng:106.9374 }, { name:"Trạm 115 Bình Đông (Q8)", lat:10.7354, lng:106.6524 }, 
+    { name:"Trạm 115 Ung Bướu CS2", lat: 10.8712, lng: 106.8094 }, { name:"Trạm 115 Bình Trưng (Thủ Đức)", lat:10.7821, lng:106.7690 },{ name:"Trạm 115 khu vực Bà Rịa", lat:10.5152, lng:107.1951 },
+    { name:"Trạm Bệnh viện Nhân dân Gia Định", lat:10.8037, lng:106.6940 },{ name:"BV Hoàn Mỹ Vạn Phúc 2", lat:10.9793, lng:106.7407 },{ name:"BV Quốc Tế Mỹ ", lat:10.7938, lng:106.7464 } 
+];
+
+let map = L.map('map').setView([10.7769, 106.7009], 11);
+L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', { maxZoom: 21, subdomains:['mt0','mt1','mt2','mt3'] }).addTo(map);
+
+let currentCoords = null; 
+let tempMarker = null, tempCircle1 = null, tempCircle2 = null, tempRouteLayer = null;
+let currentSelectedStation = null;
+let blacklist = [];
+
+const redCrossIcon = L.divIcon({ className: 'red-cross-icon', html: `<svg width="18" height="18" viewBox="0 0 24 24"><rect x="10" y="4" width="4" height="16" fill="#c0392b"/><rect x="4" y="10" width="16" height="4" fill="#c0392b"/></svg>`, iconSize: [18, 18], iconAnchor: [9, 9] });
+stations.forEach(s => { L.marker([s.lat, s.lng], { icon: redCrossIcon }).bindTooltip(s.name, { direction: 'top' }).addTo(map); });
+
+function toggleClearBtn(input) {
+    const btnClear = input.parentElement.querySelector('.btn-clear');
+    if (btnClear) {
+        btnClear.style.display = input.value.trim().length > 0 ? 'flex' : 'none';
+    }
+}
+
+function clearInput(id) {
+    const input = document.getElementById(id);
+    if (input) {
+        input.value = '';
+        toggleClearBtn(input);
+        input.focus();
+        if(id === 'stSearchInput') document.getElementById("stRollList").style.display = "none";
+        if(id === 'mapSearchInput') document.getElementById("mapSearchList").style.display = "none";
+    }
+}
+
+function resetCurrentInput() {
+    ['addr_location_name', 'addr_full', 'addr_pluscode', 'addr_lat', 'addr_lng'].forEach(clearInput);
+    clearTempGraphics();
+    currentCoords = null;
+    blacklist = [];
+    document.getElementById("list").innerHTML = `<i>Vui lòng click bản đồ hoặc nhập địa chỉ/Plus Code/tọa độ để xử lý ca bệnh...</i>`;
+}
+
+function clearTempGraphics() {
+    if (tempMarker) map.removeLayer(tempMarker);
+    if (tempCircle1) map.removeLayer(tempCircle1);
+    if (tempCircle2) map.removeLayer(tempCircle2);
+    if (tempRouteLayer) map.removeLayer(tempRouteLayer);
+    tempMarker = null; tempCircle1 = null; tempCircle2 = null; tempRouteLayer = null;
+}
+
+map.on('click', async function(e) {
+    let lat = e.latlng.lat;
+    let lng = e.latlng.lng;
+    if (lat >= LIMIT.latMin && lat <= LIMIT.latMax && lng >= LIMIT.lngMin && lng <= LIMIT.lngMax) {
+        const inputLat = document.getElementById("addr_lat");
+        const inputLng = document.getElementById("addr_lng");
+        inputLat.value = lat.toFixed(6);
+        inputLng.value = lng.toFixed(6);
+        toggleClearBtn(inputLat);
+        toggleClearBtn(inputLng);
+        await process(lat, lng);
+    } else {
+        alert("Vị trí click nằm ngoài phạm vi phủ sóng!");
+    }
+});
+
+function haversine(lat1, lon1, lat2, lon2) {
+    const R = 6371; 
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+async function fetchOSRM(startLat, startLng, endLat, endLng) {
+    try {
+        const url = `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.routes && data.routes.length > 0) {
+            return {
+                distance: (data.routes[0].distance / 1000).toFixed(1),
+                geometry: data.routes[0].geometry
+            };
+        }
+    } catch (e) {
+        console.error("Lỗi OSRM:", e);
+    }
+    return null;
+}
+
+async function searchAddr() {
+    let locNameInput = document.getElementById("addr_location_name").value.trim();
+    let plusCodeInput = document.getElementById("addr_pluscode").value.trim();
+    let latInput = document.getElementById("addr_lat").value.trim();
+    let lngInput = document.getElementById("addr_lng").value.trim();
+    let fullAddrInput = document.getElementById("addr_full").value.trim();
+
+    // 1. TÌM KIẾM THEO TÊN ĐỊA ĐIỂM
+    if (locNameInput) {
+        let result = await fetchNominatim(locNameInput);
+        if (!result && !locNameInput.toLowerCase().includes("hồ chí minh") && !locNameInput.toLowerCase().includes("bình dương") && !locNameInput.toLowerCase().includes("vũng tàu")) {
+            result = await fetchNominatim(locNameInput + ", Hồ Chí Minh");
+        }
+        if (result) {
+            const lat = parseFloat(result.lat);
+            const lon = parseFloat(result.lon);
+            document.getElementById("addr_lat").value = lat.toFixed(6);
+            document.getElementById("addr_lng").value = lon.toFixed(6);
+            map.setView([lat, lon], 17);
+            await process(lat, lon);
+            return;
+        } else {
+            return alert("Không tìm thấy tọa độ cho địa điểm này!");
+        }
+    }
+
+    // 2. GIẢI MÃ PLUS CODE
+    if (plusCodeInput) {
+        let lat, lng;
+        const OLC = window.OpenLocationCode || OpenLocationCode;
+        const olcInstance = typeof OLC === 'function' ? new OLC() : OLC;
+
+        try {
+            let rawCode = plusCodeInput.toUpperCase();
+            let parts = rawCode.split(/\s+|,/);
+            let codeOnly = parts[0].trim();
+            let locality = rawCode.replace(codeOnly, '').replace(/^[\s,]+/, '').trim();
+
+            if (olcInstance.isFull(codeOnly)) {
+                let codeArea = olcInstance.decode(codeOnly);
+                lat = codeArea.latitudeCenter;
+                lng = codeArea.longitudeCenter;
+            } else if (olcInstance.isShort(codeOnly)) {
+                let refLat = 10.7769, refLng = 106.7009;
+                if (locality) {
+                    let locResult = await fetchNominatim(locality);
+                    if (locResult) {
+                        refLat = parseFloat(locResult.lat);
+                        refLng = parseFloat(locResult.lon);
+                    }
+                }
+                let fullCode = olcInstance.recoverNearest(codeOnly, refLat, refLng);
+                let codeArea = olcInstance.decode(fullCode);
+                lat = codeArea.latitudeCenter;
+                lng = codeArea.longitudeCenter;
+            } else {
+                return alert("Mã Plus Code không hợp lệ!");
+            }
+        } catch (e) {
+            return alert("Không thể giải mã Plus Code này!");
+        }
+
+        if (lat >= LIMIT.latMin && lat <= LIMIT.latMax && lng >= LIMIT.lngMin && lng <= LIMIT.lngMax) {
+            document.getElementById("addr_lat").value = lat.toFixed(6);
+            document.getElementById("addr_lng").value = lng.toFixed(6);
+            map.setView([lat, lng], 17);
+            await process(lat, lng);
+            return;
+        } else {
+            return alert("Tọa độ giải mã nằm ngoài phạm vi phục vụ!");
+        }
+    }
+
+    // 3. NHẬP TỌA ĐỘ TRỰC TIẾP
+    if (latInput && lngInput) {
+        let lat = parseFloat(latInput);
+        let lng = parseFloat(lngInput);
+        if (isNaN(lat) || isNaN(lng)) return alert("Tọa độ không hợp lệ!");
+        if (lat >= LIMIT.latMin && lat <= LIMIT.latMax && lng >= LIMIT.lngMin && lng <= LIMIT.lngMax) {
+            map.setView([lat, lng], 17);
+            await process(lat, lng);
+            return;
+        } else {
+            return alert("Tọa độ nằm ngoài giới hạn khu vực!");
+        }
+    }
+
+    // 4. TÌM KIẾM THEO ĐỊA CHỈ VĂN BẢN
+    if (!fullAddrInput) return alert("Vui lòng nhập tên địa điểm, địa chỉ, tọa độ hoặc Plus Code cần tìm!");
+
+    let result = await fetchNominatim(fullAddrInput);
+    if (!result && !fullAddrInput.toLowerCase().includes("hồ chí minh")) {
+        result = await fetchNominatim(fullAddrInput + ", Hồ Chí Minh");
+    }
+
+    if (result) {
+        const lat = parseFloat(result.lat);
+        const lon = parseFloat(result.lon);
+        document.getElementById("addr_lat").value = lat.toFixed(6);
+        document.getElementById("addr_lng").value = lon.toFixed(6);
+        map.setView([lat, lon], 17);
+        await process(lat, lon);
+    } else {
+        alert("Không thể tìm thấy tọa độ của địa chỉ này. Vui lòng bổ sung rõ tên Phường/Xã, Quận/Huyện!");
+    }
+}
+
+async function fetchNominatim(query) {
+    try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&viewbox=${BOX}&bounded=1`);
+        const data = await res.json();
+        const valid = data.filter(item => {
+            const lat = parseFloat(item.lat), lon = parseFloat(item.lon);
+            return (lat >= LIMIT.latMin && lat <= LIMIT.latMax && lon >= LIMIT.lngMin && lon <= LIMIT.lngMax);
+        });
+        return valid.length > 0 ? valid[0] : (data.length > 0 ? data[0] : null);
+    } catch (e) { return null; }
+}
+
+async function process(lat, lng) {
+    currentCoords = { lat: parseFloat(lat), lng: parseFloat(lng) };
+    clearTempGraphics();
+
+    tempMarker = L.marker([lat, lng]).addTo(map).bindPopup("<b>Vị trí ca cấp cứu mới</b>").openPopup();
+    tempCircle1 = L.circle([lat, lng], { radius: 10000, color: '#c0392b', fillOpacity: 0.02, dashArray: '5,5', weight: 1 }).addTo(map);
+    tempCircle2 = L.circle([lat, lng], { radius: 3000, color: '#2980b9', fillOpacity: 0.05, weight: 1 }).addTo(map);
+    
+    await renderStaticList();
+}
+
+async function renderStaticList() {
+    if (!currentCoords) return;
+    const { lat, lng } = currentCoords;
+    const activeStations = stations.filter(s => !blacklist.includes(s.name));
+
+    document.getElementById("list").innerHTML = `<b>⏳ ĐANG TÍNH TOÁN TUYẾN ĐƯỜNG TRẠM GẦN NHẤT...</b>`;
+
+    const priorityGroup = activeStations
+        .filter(s => priorityNames.includes(s.name))
+        .map(s => ({ ...s, airDist: haversine(lat, lng, s.lat, s.lng) }))
+        .sort((a, b) => a.airDist - b.airDist);
+
+    const normalGroup = activeStations
+        .filter(s => !priorityNames.includes(s.name))
+        .map(s => ({ ...s, airDist: haversine(lat, lng, s.lat, s.lng) }))
+        .sort((a, b) => a.airDist - b.airDist);
+
+    const targetGroup = [...priorityGroup.slice(0, 5), ...normalGroup.slice(0, 6)];
+
+    const roadPromises = targetGroup.map(async (s) => {
+        const road = await fetchOSRM(s.lat, s.lng, lat, lng);
+        return { ...s, roadDist: road ? parseFloat(road.distance) : 999 };
+    });
+
+    let filtered = await Promise.all(roadPromises);
+    filtered.sort((a, b) => a.roadDist - b.roadDist);
+
+    const titleText = `<b>📍 PA2: TRẠM GẦN NHẤT</b>`;
+    renderCardList(titleText, filtered);
+}
+
+function renderCardList(titleText, filtered) {
+    document.getElementById("list").innerHTML = titleText + filtered.map((s, i) => {
+        const isPriority = priorityNames.includes(s.name);
+        const cardStyle = isPriority ? `border-left: 4px solid #c0392b;` : `border-left: 4px solid #2980b9;`;
+        const roadDistStr = s.roadDist ? `${s.roadDist} km` : "N/A";
+        return `
+            <div class="station-card" style="${cardStyle}" onclick="selectStation('${s.name}')">
+                <b>${i + 1}. ${s.name}</b><br>
+                <span>Khoảng cách đường bộ: <b>${roadDistStr}</b></span>
+            </div>
+        `;
+    }).join("");
+}
+
+function selectStation(name) {
+    alert("Đã chọn trạm: " + name);
+}
+
+function filterMapSearch(val) {
+    const list = document.getElementById("mapSearchList");
+    if (!val.trim()) { list.style.display = "none"; return; }
+    const match = stations.filter(s => s.name.toLowerCase().includes(val.toLowerCase())).slice(0, 5);
+    if (match.length === 0) { list.style.display = "none"; return; }
+    list.innerHTML = match.map(m => `<div class="map-search-item" onclick="zoomToStation(${m.lat}, ${m.lng}, '${m.name}')">${m.name}</div>`).join("");
+    list.style.display = "block";
+}
+
+function zoomToStation(lat, lng, name) {
+    map.setView([lat, lng], 16);
+    document.getElementById("mapSearchList").style.display = "none";
+}
+
+function handleRollSearch(val) {
+    const list = document.getElementById("stRollList");
+    if (!val.trim()) { list.style.display = "none"; return; }
+    const match = stations.filter(s => s.name.toLowerCase().includes(val.toLowerCase())).slice(0, 5);
+    if (match.length === 0) { list.style.display = "none"; return; }
+    list.innerHTML = match.map(m => `<div class="roll-item" onclick="selectRollStation('${m.name}')">${m.name}</div>`).join("");
+    list.style.display = "block";
+}
+
+function selectRollStation(name) {
+    document.getElementById("stSearchInput").value = name;
+    document.getElementById("stRollList").style.display = "none";
+}
+</script>
+</body>
+</html>
